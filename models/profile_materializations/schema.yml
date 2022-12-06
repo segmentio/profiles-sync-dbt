@@ -1,0 +1,49 @@
+
+version: 2
+
+models:
+
+  - name: id_graph
+    description: "Lookup table for segmentID -> canonical segmentID"
+    columns:
+      - name: canonical_segment_id
+        description: "Canonical/merged profile ID"
+        tests:
+            - not_null
+      - name: segment_id
+        description: "Lookup ID for a Segment-created profile"
+        tests:
+          - unique
+          - not_null
+      - name: timestamp
+        description: "Timestamp of last profile creation/association for given segment_id"
+        tests:
+          - not_null
+      - name: etl_ts
+        description: "Timestamp of last DBT materialization"
+ 
+  - name: external_id_mapping
+    description: "External ID <> canonical ID lookup"
+    columns:
+      - name: canonical_segment_id
+        description: "Merged lookup ID for a Segment-created profile"
+        tests:
+          - not_null
+      - name: external_id_type
+      - name: external_id_id
+      - name: external_id_hash
+        description: "Hashed/Combined external_id_type + _id (guaranteed unique)"
+        tests:
+          - unique
+          - not_null
+      - name: timestamp
+
+
+  - name: profile_traits
+    description: "Traits, calculated/filtered along canonical/merged profiles"
+    columns:
+      - name: canonical_segment_id
+        description: "Merged Lookup ID for a Segment-created profile"
+        tests:
+          - unique
+          - not_null
