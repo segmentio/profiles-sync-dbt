@@ -1,0 +1,24 @@
+profiles_sync:
+  target: prod
+  outputs:
+    prod:
+      type: snowflake
+      account: prodigygame.us-east-1
+
+      # User/password auth
+      user: segment_user
+      password: "{{env_var('SEGMENT_USER_PASSWORD')}}"
+
+      role: segment
+      database: segment_events
+      warehouse: segment_warehouse
+      schema: segment_dbt
+      threads: 10
+      client_session_keep_alive: False
+      query_tag: dbt-segment-profiles-sync
+
+      # optional
+      connect_retries: 0 # default 0
+      connect_timeout: 10 # default: 10
+      retry_on_database_errors: False # default: false
+      retry_all: False  # default: false

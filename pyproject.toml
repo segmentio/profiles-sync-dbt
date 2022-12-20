@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "profiles-sync-dbt"
+version = "0.1.0"
+description = ""
+authors = ["Natarajan Chakrapani <natarajan.chakrapani@prodigygame.com>"]
+readme = "README.md"
+packages = [{include = "profiles_sync_dbt"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+dbt-snowflake = "^1.3.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
