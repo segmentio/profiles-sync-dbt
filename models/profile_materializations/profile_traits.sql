@@ -37,6 +37,7 @@ Traits will be sequenced in timestamp order (the most recent is prioritized) - f
 {% endif -%}
 
 
+
 -- - - IIa. Build profiles (incremental) - - - - - - - - 
 -- Outer join between:
 -- 1) List of merged-away + newly-observed profiles
@@ -55,7 +56,7 @@ Traits will be sequenced in timestamp order (the most recent is prioritized) - f
 {{- existing_cols.append( col.name ) or "" -}} 
 {% endfor -%}
 
-{%- set get_max_ts %} SELECT CAST(MAX(uuid_ts) AS datetime) FROM {{ this }} {% endset -%}
+{%- set get_max_ts %} SELECT CAST(MAX(uuid_ts) AS {{datetime_univ()}}) FROM {{ this }} {% endset -%}
 {% set results2 = run_query(get_max_ts) %}
 {%- if execute %}
     {% set ts = results2.columns[0].values()[0] %}
@@ -64,9 +65,11 @@ Traits will be sequenced in timestamp order (the most recent is prioritized) - f
 {% endif -%}
 
 
+
+
 WITH id_graph AS (
     SELECT * FROM {{ ref('id_graph') }} 
-    WHERE CAST(etl_ts as datetime) >= {{ dateadd('hour', -var('etl_overlap'), '\'' ~ ts ~ '\'') }}
+    WHERE CAST(etl_ts as {{datetime_univ()}}) >= {{ dateadd2('hour', -var('etl_overlap'), '\'' ~ ts ~ '\'') }}
 ),
 
 merges AS (
@@ -86,9 +89,7 @@ updates AS (
     SELECT DISTINCT
         COALESCE(id_graph.canonical_segment_id,events.segment_id) as canonical_segment_id,
         {% for col in column_names %}
-        LAST_VALUE(events.{{ col }} IGNORE NULLS) 
-            OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,events.segment_id) ORDER BY events.timestamp 
-                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS {{ col }}
+        {{ last_observed_trait(col) }}
         {%- if not loop.last %},{% endif %}
         {% endfor %}
     FROM {{ var("schema_name") }}.identifies AS events
@@ -123,9 +124,7 @@ LEFT JOIN {{ this }} as orig
 SELECT DISTINCT
     COALESCE(id_graph.canonical_segment_id,events.segment_id) as canonical_segment_id,
     {% for col in column_names %}
-    LAST_VALUE(events.{{ col }} IGNORE NULLS) 
-        OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,events.segment_id) ORDER BY events.timestamp
-            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS {{ col }},
+    {{ last_observed_trait(col) }},
     {% endfor %}
     '' as merged_to
 FROM {{ var("schema_name") }}.identifies AS events

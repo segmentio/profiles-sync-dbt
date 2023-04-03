@@ -5,11 +5,11 @@
     - default config: incremental build (add any newly-landed profiles/updated associations from id_graph_updates).
 
     - adds "etl_ts", a column to indicate most recently-materialized rows (which we need need to efficiently filter
-      when joining to other tables)
+      when joining this result to other models)
 
     - performs one layer of checking upstream to ensure we don't accidentially include profiles that are now 
       actually merged away (can happen rarely, if merges happen in rapid succession but land in the DWH 
-      slightly out of order) - will only look at last 2 hrs
+      slightly out of order). Updates that resolve to a known-merged-away ID are ignored during incremental materialization.
 */
 
 {{ config(unique_key='segment_id') }}
@@ -29,16 +29,15 @@ FROM (
         updates.timestamp,
         updates.seq,
         {{ current_timestamp() }} AS etl_ts,
-        row_number() OVER(PARTITION BY updates.segment_id 
-            ORDER BY updates2.canonical_segment_id IS NOT NULL, updates.seq DESC NULLS FIRST) AS rn
+        row_number() OVER(PARTITION BY updates.segment_id
+            ORDER BY CASE WHEN updates.seq IS NULL THEN '0' ELSE updates.seq END DESC) AS rn
     FROM {{ var("schema_name") }}.id_graph_updates as updates
-    LEFT JOIN {{ var("schema_name") }}.id_graph_updates as updates2
-        ON updates2.segment_id = updates.canonical_segment_id
-        AND CAST(updates.uuid_ts AS datetime) < {{ dbt.dateadd('hour', 2, 'updates2.uuid_ts') }}
-        AND updates2.canonical_segment_id <> updates2.segment_id
-        AND updates2.canonical_segment_id <> updates.canonical_segment_id 
     {% if is_incremental() -%}
-    WHERE CAST(updates.uuid_ts AS datetime) > CAST((SELECT MAX(uuid_ts) FROM {{ this }}) as datetime)
+    LEFT JOIN {{ this }}
+        ON {{ this }}.segment_id = updates.canonical_segment_id
+        AND {{ this }}.canonical_segment_id <> {{ this }}.segment_id
+    WHERE CAST(updates.uuid_ts AS {{datetime_univ()}}) > CAST((SELECT MAX(uuid_ts) FROM {{ this }}) as {{datetime_univ()}})
+        AND {{ this }}.canonical_segment_id IS NULL
     {%- endif %}
     ) AS all_updates
 WHERE rn = 1

@@ -8,10 +8,16 @@ config-version: 2
 require-dbt-version: '>=1.2.0' # several macros we need were included at this point
 
 # This setting configures which "profile" dbt uses for this project.
-profile: 'profiles_sync'
+#profile: profiles_sync
+profile: profiles_synapse
+#profile: profiles_redshift
+#profile: profiles_postgres
 
 vars:
-  schema_name: personas_main_2
+  #schema_name: personas_main_2
+  schema_name: psync_azure
+  #schema_name: piw_819 # Redshift testing schema
+  #schema_name: piw_1211_postgres #postgres testing schema
   etl_overlap: 28 # should be set to an interval (in hours) that's a bit larger than your materialization cadence
 
 # These configurations specify where dbt should look for different types of files.
@@ -39,3 +45,7 @@ models:
   profiles_sync:
     profile_materializations:
       +materialized: incremental
+    troubleshooting:
+      +enabled: false
+
+

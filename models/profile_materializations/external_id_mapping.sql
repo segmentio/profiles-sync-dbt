@@ -12,7 +12,7 @@ A profile is defined by having one or more external IDs, so every profile will b
 {{ config(unique_key='external_id_hash') }}
 
 {# Query for latest build time of id_graph #}
-{%- set get_max_ts %} SELECT CAST(MAX(etl_ts) AS datetime) FROM {{ ref('id_graph') }} {% endset -%}
+{%- set get_max_ts %} SELECT CAST(MAX(etl_ts) AS {{datetime_univ()}}) FROM {{ ref('id_graph') }} {% endset -%}
 {% set results = run_query(get_max_ts) %}
 {%- if execute %}
     {% set ts = results.columns[0].values()[0] %}
@@ -29,18 +29,18 @@ SELECT
     all_maps.uuid_ts
 FROM (
     SELECT
-            COALESCE(id_graph.canonical_segment_id,ids.segment_id) as canonical_segment_id,
-            ids.external_id_type,
-            ids.external_id_value,
-            ids.external_id_hash,
-            ids.timestamp,
-            ids.uuid_ts,
-            ROW_NUMBER() OVER (PARTITION BY ids.external_id_hash ORDER BY ids.timestamp DESC) AS rn
+        COALESCE(id_graph.canonical_segment_id,ids.segment_id) as canonical_segment_id,
+        ids.external_id_type,
+        ids.external_id_value,
+        ids.external_id_hash,
+        ids.timestamp,
+        ids.uuid_ts,
+        ROW_NUMBER() OVER (PARTITION BY ids.external_id_hash ORDER BY ids.timestamp DESC) AS rn
     FROM {{ var("schema_name") }}.external_id_mapping_updates as ids
     LEFT JOIN {{ ref('id_graph') }} AS id_graph
         ON id_graph.segment_id = ids.segment_id
     {% if is_incremental() -%}
-        AND CAST(id_graph.etl_ts AS datetime) >= {{ dateadd('hour', -var('etl_overlap'), '\'' ~ ts ~ '\'')}}
+        AND CAST(id_graph.etl_ts AS {{datetime_univ()}}) >= {{ dateadd2('hour', -var('etl_overlap'), '\'' ~ ts ~ '\'')}}
     WHERE ids.uuid_ts > (SELECT MAX(uuid_ts) FROM {{ this }})
         OR id_graph.canonical_segment_id IS NOT NULL
     {%- endif %}
