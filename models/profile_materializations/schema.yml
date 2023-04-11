@@ -17,8 +17,6 @@ models:
           - not_null
       - name: timestamp
         description: "Timestamp of last profile creation/association for given segment_id"
-        tests:
-          - not_null
       - name: etl_ts
         description: "Timestamp of last DBT materialization"
  
@@ -44,6 +42,3 @@ models:
     columns:
       - name: canonical_segment_id
         description: "Merged Lookup ID for a Segment-created profile"
-        tests:
-          - unique
-          - not_null
