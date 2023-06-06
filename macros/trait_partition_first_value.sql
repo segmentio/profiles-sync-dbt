@@ -13,7 +13,6 @@
         OVER(PARTITION BY canonical_segment_id, {{ col ~ '_partition'}} ORDER BY seq) AS {{ col }} 
 {% endmacro %}
 
-
 {% macro redshift__trait_partition_first_value(col) %}
     FIRST_VALUE({{ col }}) 
         OVER(PARTITION BY canonical_segment_id, {{ col ~ '_partition'}} ORDER BY seq) AS {{ col }}  
