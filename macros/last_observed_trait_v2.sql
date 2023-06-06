@@ -25,7 +25,8 @@
 {% endmacro %}
 
 {% macro postgres__last_observed_profile_trait(col) %}
-    find_last_ignore_nulls(updates.{{ col }}) 
+    LAST_VALUE(updates.{{ col }}) 
+    --find_last_ignore_nulls(updates.{{ col }}) 
         OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,updates.segment_id) ORDER BY updates.seq 
         ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS {{ col }}
 {% endmacro %}
