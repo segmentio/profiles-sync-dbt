@@ -19,7 +19,6 @@ Traits will be sequenced in timestamp order (the most recent is prioritized) - f
         column_name
     FROM {{ col_table(var("schema_name")) }} 
     WHERE LOWER(table_schema) = LOWER('{{ var("schema_name") }}')
-        --AND LOWER(table_name) = 'identifies'
         AND LOWER(table_name) = 'profile_traits_updates'
         AND NOT LOWER(column_name) IN ('user_id','anonymous_id','id','canonical_segment_id','merged_to','sent_at','received_at')
         AND NOT LOWER(column_name) LIKE  'context_%'
@@ -70,22 +69,41 @@ WITH id_graph AS (
     WHERE CAST(etl_ts as {{datetime_univ()}}) >= {{ dateadd2('hour', -var('etl_overlap'), '\'' ~ ts ~ '\'') }}
 ),
 
+merges AS (
+    SELECT -- net_new profiles - may be identified, maybe not
+        canonical_segment_id,
+        NULL as merged_to
+    FROM id_graph WHERE segment_id = canonical_segment_id
+    UNION ALL
+    SELECT -- merged-out profiles
+        segment_id,
+        canonical_segment_id as merged_to
+    FROM id_graph WHERE segment_id <> canonical_segment_id
+
+),
+
+last_profile_traits_updates as (
+    select *
+        , row_number() OVER(PARTITION BY segment_id ORDER BY CASE WHEN seq IS NULL THEN '0' ELSE seq END DESC) AS last_record
+    FROM {{ var("schema_name") }}.profile_traits_updates AS updates
+    WHERE updates.seq > (SELECT MAX(seq) FROM {{ this }})
+),
 
 updates as (
-    SELECT 
+    SELECT distinct
         COALESCE(id_graph.canonical_segment_id,updates.segment_id) as canonical_segment_id,
         {% for col in column_names %}
-            {{ last_observed_profile_trait(col) }},
-            {% endfor %}
-        row_number() OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,updates.segment_id)
-            ORDER BY CASE WHEN updates.seq IS NULL THEN '0' ELSE updates.seq END DESC) AS rn
+            LAST_VALUE(updates.{{ col }} IGNORE NULLS) 
+            OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,updates.segment_id) ORDER BY updates.seq 
+                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS {{ col }}
+        {%- if not loop.last %},{% endif %}
+        {% endfor %}
     --FROM {{ var("schema_name") }}.identifies AS updates
-    FROM {{ var("schema_name") }}.profile_traits_updates AS updates
+    FROM last_profile_traits_updates AS updates
     LEFT JOIN id_graph
         ON id_graph.segment_id = updates.segment_id
-    WHERE CAST(updates.uuid_ts as {{datetime_univ()}})  > (SELECT MAX(timestamp) FROM {{ this }})
+    WHERE updates.last_record = 1
 )
-
 
 SELECT 
     updates.canonical_segment_id as canonical_segment_id,
@@ -95,30 +113,39 @@ SELECT
           {%- else %}
              updates.{{col}} AS {{ col }},
           {% endif %}
-        {%- if not loop.last %},{% endif %}
         {% endfor %}
-FROM updates
-where rn = 1
+    merges.merged_to
+FROM merges
+FULL OUTER JOIN updates
+    ON merges.canonical_segment_id = updates.canonical_segment_id
+LEFT JOIN {{ this }} as orig
+    ON orig.canonical_segment_id =  COALESCE(merges.canonical_segment_id,updates.canonical_segment_id)
 
 {% else %}
 
-WITH last_update as (
-    SELECT 
+WITH last_profile_traits_updates as (
+    select *
+        , row_number() OVER(PARTITION BY segment_id ORDER BY CASE WHEN seq IS NULL THEN '0' ELSE seq END DESC) AS last_record
+    FROM {{ var("schema_name") }}.profile_traits_updates AS updates
+),
+
+updates as (
+    SELECT distinct 
         COALESCE(id_graph.canonical_segment_id,updates.segment_id) as canonical_segment_id,
         {% for col in column_names %}
-            {{ last_observed_profile_trait(col) }},
+            LAST_VALUE(updates.{{ col }} IGNORE NULLS) 
+            OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,updates.segment_id) ORDER BY updates.seq 
+                ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS {{ col }},
             {% endfor %}
         {{ current_timestamp() }} AS etl_ts,
-        row_number() OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,updates.segment_id)
-            ORDER BY CASE WHEN updates.seq IS NULL THEN '0' ELSE updates.seq END DESC) AS rn
+        '' as merged_to
     --FROM {{ var("schema_name") }}.identifies AS updates
-    FROM {{ var("schema_name") }}.profile_traits_updates AS updates
+    FROM last_profile_traits_updates AS updates
     FULL OUTER JOIN {{ ref('id_graph') }} AS id_graph
         ON id_graph.segment_id = updates.segment_id
+    where updates.last_record = 1
 )
 
 select *
-from last_update
-where rn = 1
-
+from updates
 {% endif %}

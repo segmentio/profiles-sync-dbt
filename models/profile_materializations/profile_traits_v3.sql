@@ -19,8 +19,8 @@ Traits will be sequenced in timestamp order (the most recent is prioritized) - f
         column_name
     FROM {{ col_table(var("schema_name")) }} 
     WHERE LOWER(table_schema) = LOWER('{{ var("schema_name") }}')
-        --AND LOWER(table_name) = 'profile_traits_updates'
-        AND LOWER(table_name) = 'aawang_test_windowfx'
+        AND LOWER(table_name) = 'profile_traits_updates'
+        --AND LOWER(table_name) = 'aawang_test_windowfx'
         AND NOT LOWER(column_name) IN ('user_id','anonymous_id','id','canonical_segment_id','merged_to','sent_at','received_at','seq')
         AND NOT LOWER(column_name) LIKE  'context_%'
         AND LEFT(column_name,1) <> '_'
@@ -67,22 +67,39 @@ WITH id_graph AS (
     WHERE CAST(etl_ts as {{datetime_univ()}}) >= {{ dateadd2('hour', -var('etl_overlap'), '\'' ~ ts ~ '\'') }}
 ),
 
+last_profile_traits_updates as (
+    select *
+        , row_number() OVER(PARTITION BY segment_id ORDER BY CASE WHEN seq IS NULL THEN '0' ELSE seq END DESC) AS last_record
+    FROM {{ var("schema_name") }}.profile_traits_updates AS updates
+),
 
-updates as (
+profile_traits_updates as (
     SELECT 
         COALESCE(id_graph.canonical_segment_id,updates.segment_id) as canonical_segment_id,
-        {% for col in column_names %}
-            {{ last_observed_profile_trait(col) }},
-            {% endfor %}
-        row_number() OVER(PARTITION BY COALESCE(id_graph.canonical_segment_id,updates.segment_id)
-            ORDER BY CASE WHEN updates.seq IS NULL THEN '0' ELSE updates.seq END DESC) AS rn
-    --FROM {{ var("schema_name") }}.identifies AS updates
-    FROM {{ var("schema_name") }}.profile_traits_updates AS updates
-    LEFT JOIN id_graph
+        {%- for col in column_names %}
+             updates.{{col}} AS {{ col }},
+        {% endfor -%}
+        {%-for col in column_names %}
+            {{ trait_partition(col) }},
+            {% endfor -%}
+        updates.seq
+    FROM last_profile_traits_updates AS updates
+    --FROM {{ var("schema_name") }}.aawang_test_windowfx AS updates 
+    LEFT JOIN {{ ref('id_graph') }} AS id_graph
         ON id_graph.segment_id = updates.segment_id
     WHERE CAST(updates.uuid_ts as {{datetime_univ()}})  > (SELECT MAX(timestamp) FROM {{ this }})
-)
+        and updates.last_record = 1
+),
 
+updates as (
+select canonical_segment_id,
+    {%- for col in column_names %}
+        {{ trait_partition_first_value(col) }},
+        {% endfor -%}
+    {{ current_timestamp() }} AS etl_ts,
+    row_number() OVER(PARTITION BY canonical_segment_id ORDER BY CASE WHEN seq IS NULL THEN '0' ELSE seq END DESC) AS rn
+from profile_traits_updates
+)
 
 SELECT 
     updates.canonical_segment_id as canonical_segment_id,
@@ -100,7 +117,13 @@ where rn = 1
 {% else %}
 
 
-WITH last_update as (
+WITH last_profile_traits_updates as (
+    select *
+        , row_number() OVER(PARTITION BY segment_id ORDER BY CASE WHEN seq IS NULL THEN '0' ELSE seq END DESC) AS last_record
+    FROM {{ var("schema_name") }}.profile_traits_updates AS updates
+),
+
+profile_traits_updates as (
     SELECT 
         COALESCE(id_graph.canonical_segment_id,updates.segment_id) as canonical_segment_id,
         {%- for col in column_names %}
@@ -110,20 +133,21 @@ WITH last_update as (
             {{ trait_partition(col) }},
             {% endfor -%}
         updates.seq
-    --FROM {{ var("schema_name") }}.profile_traits_updates AS updates
-    FROM {{ var("schema_name") }}.aawang_test_windowfx AS updates 
+    FROM last_profile_traits_updates AS updates
+    --FROM {{ var("schema_name") }}.aawang_test_windowfx AS updates 
     FULL OUTER JOIN {{ ref('id_graph') }} AS id_graph
         ON id_graph.segment_id = updates.segment_id
-)
+    where updates.last_record = 1
+), 
 
-, updates as (
+updates as (
 select canonical_segment_id,
     {%- for col in column_names %}
         {{ trait_partition_first_value(col) }},
         {% endfor -%}
     {{ current_timestamp() }} AS etl_ts,
     row_number() OVER(PARTITION BY canonical_segment_id ORDER BY CASE WHEN seq IS NULL THEN '0' ELSE seq END DESC) AS rn
-from last_update
+from profile_traits_updates
 )
 
 select *
