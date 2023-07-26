@@ -102,7 +102,6 @@ updates as (
     LEFT JOIN id_graph
         ON id_graph.segment_id = updates.segment_id
     WHERE updates.last_record = 1
-        and updates.seq > (SELECT MAX(seq) FROM {{ this }})
 )
 
 SELECT 
