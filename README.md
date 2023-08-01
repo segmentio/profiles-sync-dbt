@@ -23,13 +23,14 @@ identity graph's **current state**.
 
 Specifically, we recommend you create:
 
-| Materialized Table    | Source Table                  | Description                                                                                                                                        |
-| ------------------    | --------------                | ------------------------------                                                                                                                     |
-| `id_graph`            | `id_graph_updated`            | a lookup table for identities - i.e. where you can join using `segment_id`  to combine events that then resolve to a single `canonical_segment_id` |
-| `external_id_mapping` | `external_id_mapping_updates` | a lookup table for external identifiers such as `user_id`, `email`, etc.                                                                           |
-| `profile_traits`      | `identifies`                  | a table of people and traits - one row per `canonical_segment_id`.                                                                                 |
+| Materialized Table        | Source Table                  | Description                                                                                                                                        |
+| ------------------        | --------------                | ------------------------------                                                                                                                     |
+| `id_graph`                | `id_graph_updated`            | a lookup table for identities - i.e. where you can join using `segment_id`  to combine events that then resolve to a single `canonical_segment_id` |
+| `external_id_mapping`     | `external_id_mapping_updates` | a lookup table for external identifiers such as `user_id`, `email`, etc.                                                                           |
+| `profile_traits`          | `profile_traits_updates`      | a table of people and traits - one row per `canonical_segment_id`.                                                                                 |
+| ~~`profile_traits`~~      | ~~`identifies`~~              | As of August 1st, 2023, `profile_traits` is superceded by a materlization that sources from `profile_traits_updates`                               |
 
-`profile_traits` - Columns in this table are automatically populated from the columns of its source table `identifies`.
+`profile_traits` - Columns in this table are automatically populated from the columns of its source table `profile_traits_updates`.
 As we do not delete any rows, this table also includes merged-away profiles with their trait values set to `NULL`.
 To identify an older profile, its `merged_to` column will be populated with its latest `segment_id`.
 
