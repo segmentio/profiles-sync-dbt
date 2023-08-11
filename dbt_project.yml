@@ -11,7 +11,7 @@ require-dbt-version: '>=1.2.0' # several macros we need were included at this po
 profile: 'profiles_sync'
 
 vars:
-  schema_name: personas_main_2
+  schema_name: entity_audiences
   etl_overlap: 28 # should be set to an interval (in hours) that's a bit larger than your materialization cadence
 
 # These configurations specify where dbt should look for different types of files.
